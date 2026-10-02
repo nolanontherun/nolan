@@ -117,3 +117,6 @@ branding/*.html
 branding/*.png
 diagrams-preview.png
 blog-preview*.png
+
+# Personal Claude Code settings
+.claude/settings.local.json
