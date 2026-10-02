@@ -8,6 +8,7 @@ import { dateLabel, daysFromToday, money, moneyMap, relDays, NR } from "@/lib/fo
 import { CONTENT_TYPES, CURRENCIES, DELIVERABLE_STATUS, DEAL_SOURCES, EXPENSE_CATEGORIES, PAYMENT_METHODS, PLATFORMS, STAGES, STAGE_TONE, USAGE_KINDS, DEFAULT_TAGS, CATEGORIES } from "@/lib/constants";
 import { Badge, KV, Section, Unknown, Source, Empty } from "@/components/ui";
 import { PayBadge } from "@/components/DealTable";
+import { EmailDraft } from "@/components/EmailDraft";
 import { AutoSubmitSelect, ConfirmForm } from "@/components/Forms";
 import { addDeliverable, addExclusivity, addExpense, addNegotiation, addNote, addPayment, addUsage, archiveDeal, setDeliverableStatus, setFollowup, setStage, toggleTag, updateDeal, addDocument } from "@/lib/actions";
 
@@ -105,7 +106,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
           {[
             ["Offer", money$(d.initial_offer, cur), "Their first number"], ["Counter", money$(d.counter_offer, cur), "Your quote or counter"], ["Final", money$(d.final_amount, cur), "Agreed fee"],
             ["Paid", paidSame || otherPaid.length ? <>{paidSame ? money(paidSame, cur) : otherPaid.length ? "" : money(0, cur)}{otherPaid.map(([c, v]) => <span key={c} className="block">{money(v, c)}</span>)}</> : d.payment_state === "presumed_paid" ? <span className="text-warn">Unconfirmed</span> : money(0, cur), d.fin.unknownAmountPayments ? `${d.fin.unknownAmountPayments} payment(s) with no amount` : "Received"],
-            ["Outstanding", d.fin.outstanding ? (d.fin.outstanding.amount === null ? <Unknown /> : <span className="text-bad">{money(d.fin.outstanding.amount, d.fin.outstanding.currency)}</span>) : "—", d.fin.outstanding?.basis === "stated" ? "Stated on your board" : d.fin.outstanding?.basis === "computed" ? "Gross minus paid" : ""],
+            ["Outstanding", d.fin.outstanding ? (d.fin.outstanding?.amount === null ? <Unknown /> : <span className="text-bad">{money(d.fin.outstanding?.amount, d.fin.outstanding!.currency)}</span>) : "—", d.fin.outstanding?.basis === "stated" ? "Stated on your board" : d.fin.outstanding?.basis === "computed" ? "Gross minus paid" : ""],
           ].map(([k, v, s]) => (
             <div key={k as string} className="bg-bg p-4"><div className="caps">{k}</div><div className="mt-1 text-[20px] font-medium tabular-nums">{v}</div><div className="mt-0.5 text-[11.5px] text-faint">{s}</div></div>
           ))}
@@ -250,6 +251,10 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
               <button className="btn btn-sm">Save</button>
             </form>
             {f.tasks.length > 0 && <ul className="mt-4 border-t border-line/10">{f.tasks.map((t) => <li key={t.id} className="border-b border-line/[0.07] py-2 text-[12.5px]"><span className={t.status === "done" ? "text-faint line-through" : ""}>{t.title}</span>{t.due_date && <span className="ml-2 text-mute">{dateLabel(t.due_date, { year: true })}</span>}</li>)}</ul>}
+          </Section>
+
+          <Section title="Write an email">
+            <EmailDraft to={f.contact?.email ?? null} name={f.contact?.full_name ?? null} deal={d.name} amount={d.fin.outstanding?.amount ? money(d.fin.outstanding?.amount, d.fin.outstanding!.currency) : undefined} defaultKind={d.fin.outstanding?.amount ? "payment" : "followup"} />
           </Section>
 
           <Section title="People">
