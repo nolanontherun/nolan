@@ -1,0 +1,12 @@
+node_modules
+.next
+out
+*.tsbuildinfo
+next-env.d.ts
+# Private business data never goes in git: this repo is public.
+data-private/
+data/
+*.db
+*.db-wal
+*.db-shm
+backups/

@@ -1,0 +1,86 @@
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+@import "@fontsource/instrument-serif";
+@import "@fontsource/instrument-serif/400-italic.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 246 244 239;
+  --surface: 251 250 246;
+  --raised: 255 255 254;
+  --ink: 22 20 15;
+  --mute: 104 99 88;
+  --faint: 150 144 131;
+  --line: 28 25 18;
+  --accent: 164 72 34;
+  --good: 50 110 76;
+  --warn: 160 106 14;
+  --bad: 166 48 38;
+  color-scheme: light;
+}
+[data-theme="dark"] {
+  --bg: 14 14 12;
+  --surface: 20 20 17;
+  --raised: 27 27 23;
+  --ink: 236 233 224;
+  --mute: 150 146 134;
+  --faint: 104 100 90;
+  --line: 236 233 224;
+  --accent: 224 135 90;
+  --good: 108 178 134;
+  --warn: 214 168 80;
+  --bad: 226 110 96;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: 14 14 12; --surface: 20 20 17; --raised: 27 27 23; --ink: 236 233 224; --mute: 150 146 134; --faint: 104 100 90; --line: 236 233 224;
+    --accent: 224 135 90; --good: 108 178 134; --warn: 214 168 80; --bad: 226 110 96; color-scheme: dark;
+  }
+}
+
+html { -webkit-text-size-adjust: 100%; }
+body { @apply bg-bg text-ink font-sans antialiased; font-feature-settings: "cv11", "ss01", "tnum"; font-size: 14px; line-height: 1.5; letter-spacing: -0.003em; }
+::selection { background: rgb(var(--accent) / 0.25); }
+* { scrollbar-width: thin; scrollbar-color: rgb(var(--line) / 0.2) transparent; }
+
+@layer components {
+  .caps { @apply text-[10.5px] font-medium uppercase tracking-caps text-mute; }
+  .serif { @apply font-serif font-normal tracking-tight; }
+  .rule { @apply border-t border-line/10; }
+  .tbl { @apply w-full border-collapse text-[13px]; }
+  .tbl th { @apply text-left caps py-2 pr-4 font-medium border-b border-line/15 whitespace-nowrap; }
+  .tbl td { @apply py-2.5 pr-4 border-b border-line/[0.07] align-top; }
+  .tbl tbody tr { @apply transition-colors; }
+  .tbl tbody tr:hover { background: rgb(var(--line) / 0.025); }
+  .num { @apply text-right tabular-nums whitespace-nowrap; }
+  .input { @apply w-full rounded-[5px] border border-line/20 bg-raised px-2.5 py-1.5 text-[13px] text-ink placeholder:text-faint outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20; }
+  textarea.input { @apply min-h-[72px] leading-snug; }
+  .btn { @apply inline-flex items-center justify-center gap-1.5 rounded-[5px] border border-line/20 bg-raised px-3 py-1.5 text-[13px] font-medium text-ink transition hover:border-line/40 active:translate-y-px disabled:opacity-50; }
+  .btn-primary { @apply border-ink bg-ink text-bg hover:border-ink hover:opacity-90; }
+  .btn-ghost { @apply border-transparent bg-transparent hover:bg-line/5 hover:border-transparent; }
+  .btn-sm { @apply px-2 py-1 text-[12px]; }
+  .btn-danger { @apply text-bad hover:border-bad/50; }
+  .label { @apply caps mb-1 block; }
+  .link { @apply underline decoration-line/25 underline-offset-[3px] transition hover:decoration-accent hover:text-accent; }
+  .chip { @apply inline-flex items-center gap-1 rounded-full border border-line/15 px-2 py-[1px] text-[11.5px] text-mute transition hover:border-line/35 hover:text-ink; }
+  .chip-on { @apply border-ink bg-ink text-bg hover:text-bg; }
+  .kbd { @apply inline-flex min-w-[18px] justify-center rounded-[4px] border border-line/20 bg-surface px-1 text-[10.5px] font-medium text-mute; font-family: "JetBrains Mono Variable", ui-monospace, monospace; }
+}
+
+.fade-in { animation: fade 180ms ease-out both; }
+.rise { animation: rise 260ms cubic-bezier(.2,.7,.2,1) both; }
+@keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes rise { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
+@media (prefers-reduced-motion: reduce) { .fade-in, .rise { animation: none; } * { transition: none !important; } }
+
+dialog::backdrop { background: rgb(0 0 0 / 0.45); }
+.safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 0px); }
+
+@media print {
+  body { background: white !important; color: black !important; }
+  .no-print { display: none !important; }
+  .print-page { box-shadow: none !important; border: none !important; margin: 0 !important; }
+}
