@@ -48,6 +48,13 @@ export function Shell({ children, attention, urgent, deals }: { children: React.
   useEffect(() => { window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey); }, [onKey]);
 
   const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
+  const NavLink = ({ n }: { n: (typeof NAV)[number] }) => (
+    <Link href={n.href} className={`group flex items-center gap-2.5 rounded-[5px] px-2 py-[5px] text-[13px] transition ${active(n.href) ? "bg-line/[0.07] text-ink" : "text-mute hover:bg-line/[0.04] hover:text-ink"}`}>
+      <Icon name={n.icon} size={15} className={active(n.href) ? "text-accent" : ""} />
+      <span className="flex-1 truncate">{n.label}</span>
+      {n.href === "/attention" && attention > 0 && <span className={`rounded-full px-1.5 text-[10.5px] font-medium ${urgent ? "bg-bad/15 text-bad" : "bg-line/10 text-mute"}`}>{attention}</span>}
+    </Link>
+  );
   const groups = [...new Set(NAV.map((n) => n.group))];
   const title = NAV.find((n) => active(n.href))?.label ?? "Nolan OS";
 
@@ -62,18 +69,11 @@ export function Shell({ children, attention, urgent, deals }: { children: React.
         <button onClick={() => setQuick("deal")} className="btn btn-primary mb-3 w-full justify-between"><span className="inline-flex items-center gap-1.5"><Icon name="plus" size={14} />Quick add</span><span className="kbd !border-bg/30 !bg-transparent !text-bg/70">N</span></button>
         <button onClick={() => setPalette(true)} className="btn mb-4 w-full justify-between text-mute"><span className="inline-flex items-center gap-1.5"><Icon name="search" size={14} />Search</span><span className="kbd">⌘K</span></button>
         <nav className="-mx-1 flex-1 space-y-4 overflow-y-auto px-1 pb-4">
-          {groups.map((g) => (
-            <div key={g}>
-              <div className="caps mb-1 px-2 text-[9.5px] text-faint">{g}</div>
-              {NAV.filter((n) => n.group === g).map((n) => (
-                <Link key={n.href} href={n.href} className={`group flex items-center gap-2.5 rounded-[5px] px-2 py-[5px] text-[13px] transition ${active(n.href) ? "bg-line/[0.07] text-ink" : "text-mute hover:bg-line/[0.04] hover:text-ink"}`}>
-                  <Icon name={n.icon} size={15} className={active(n.href) ? "text-accent" : ""} />
-                  <span className="flex-1 truncate">{n.label}</span>
-                  {n.href === "/attention" && attention > 0 && <span className={`rounded-full px-1.5 text-[10.5px] font-medium ${urgent ? "bg-bad/15 text-bad" : "bg-line/10 text-mute"}`}>{attention}</span>}
-                </Link>
-              ))}
-            </div>
-          ))}
+          <div>{NAV.filter((n) => n.core).map((n) => <NavLink key={n.href} n={n} />)}</div>
+          <details className="group/more" open={NAV.some((n) => !n.core && active(n.href))}>
+            <summary className="caps mb-1 cursor-pointer px-2 text-[9.5px] text-faint">More</summary>
+            {groups.map((g) => <div key={g} className="mb-3">{NAV.filter((n) => !n.core && n.group === g).map((n) => <NavLink key={n.href} n={n} />)}</div>)}
+          </details>
         </nav>
         <div className="flex items-center justify-between border-t border-line/10 px-2 pt-3 text-mute">
           <button onClick={toggleTheme} className="btn btn-ghost btn-sm" aria-label="Toggle theme"><Icon name={theme === "dark" ? "sun" : "moon"} size={14} />{theme === "dark" ? "Light" : "Dark"}</button>
