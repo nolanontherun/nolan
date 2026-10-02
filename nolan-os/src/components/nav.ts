@@ -9,6 +9,7 @@ export const NAV: NavItem[] = [
   { href: "/contacts", label: "Contacts", icon: "people", group: "Business" },
   { href: "/agencies", label: "Agencies", icon: "agency", group: "Business" },
   { href: "/campaigns", label: "Campaigns", icon: "campaign", group: "Business" },
+  { href: "/income", label: "Income", icon: "chart", group: "Money" },
   { href: "/invoices", label: "Invoices", icon: "invoice", group: "Money" },
   { href: "/payments", label: "Payments", icon: "payments", group: "Money" },
   { href: "/revenue", label: "Revenue", icon: "money", group: "Money" },

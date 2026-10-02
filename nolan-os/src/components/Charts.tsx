@@ -53,3 +53,21 @@ export function Strip({ parts }: { parts: { key: string; value: number; tone?: s
     </div>
   );
 }
+
+/** Cumulative line with a zero baseline; shows start and end values. */
+export function Line({ data, currency = "USD", height = 150 }: { data: { key: string; value: number }[]; currency?: string; height?: number }) {
+  if (data.length < 2) return null;
+  const max = Math.max(1, ...data.map((d) => d.value));
+  const H = height / 4, pts = data.map((d, i) => [(i / (data.length - 1)) * 100, H - 2 - (d.value / max) * (H - 4)]);
+  const path = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(2)} ${p[1].toFixed(2)}`).join(" ");
+  return (
+    <div>
+      <svg viewBox={`0 0 100 ${H}`} preserveAspectRatio="none" className="w-full overflow-visible" style={{ height }} role="img" aria-label="Cumulative income line">
+        <line x1="0" x2="100" y1={H} y2={H} stroke="currentColor" strokeOpacity="0.25" strokeWidth="0.3" vectorEffect="non-scaling-stroke" />
+        <path d={`${path} L100 ${H} L0 ${H} Z`} fill="currentColor" fillOpacity="0.06" />
+        <path d={path} fill="none" stroke="currentColor" strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <div className="mt-1 flex justify-between text-[11.5px] text-mute"><span>{data[0].key}</span><span className="tabular-nums">{money(data[data.length - 1].value, currency, { compact: true })} total</span></div>
+    </div>
+  );
+}
