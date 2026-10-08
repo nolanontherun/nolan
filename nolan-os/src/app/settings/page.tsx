@@ -1,10 +1,13 @@
 import { all, getSetting } from "@/lib/db";
 import { PageHeader, Section } from "@/components/ui";
 import { addIgnoreRule, removeIgnoreRule, saveSettings } from "@/lib/actions";
+import { smtpStatus } from "@/lib/mailer";
+import { brandFrom } from "@/lib/invoice-mail";
 
 export const metadata = { title: "Settings" };
 export default function Settings() {
   const profile = getSetting<any>("profile", {}); const inv = getSetting<any>("invoice", {}); const beh = getSetting<any>("behaviour", {}); const fx = getSetting<any>("fx", {});
+  const smtp = smtpStatus(); const brand = brandFrom(profile);
   const rules = all<any>("SELECT * FROM notification_rules"); const ignores = all<any>("SELECT * FROM ignore_rules");
   const L = ({ l, children, h }: { l: string; children: React.ReactNode; h?: string }) => <label className="block"><span className="label">{l}</span>{children}{h && <span className="mt-1 block text-[11.5px] text-faint">{h}</span>}</label>;
   return (
@@ -13,7 +16,7 @@ export default function Settings() {
       <div className="grid gap-x-14 lg:grid-cols-2">
         <Section title="Business profile">
           <form action={saveSettings} className="grid gap-3"><input type="hidden" name="kind" value="profile" />
-            <L l="Your name"><input name="name" defaultValue={profile.name} className="input" /></L><L l="Business name"><input name="business" defaultValue={profile.business} className="input" /></L><L l="Email on invoices"><input name="email" defaultValue={profile.email} className="input" /></L><L l="Website"><input name="website" defaultValue={profile.website} className="input" /></L><L l="Address"><textarea name="address" defaultValue={profile.address} className="input" /></L>
+            <L l="Your name"><input name="name" defaultValue={profile.name} className="input" /></L><L l="Business name"><input name="business" defaultValue={profile.business} className="input" /></L><L l="Company legal name" h="Printed big at the top of invoices."><input name="legalName" defaultValue={profile.legalName} placeholder={brand.legal} className="input" /></L><L l="Production name" h="The small line above it, e.g. On The Run Production."><input name="production" defaultValue={profile.production} placeholder={brand.production} className="input" /></L><L l="Email on invoices"><input name="email" defaultValue={profile.email} className="input" /></L><L l="Website"><input name="website" defaultValue={profile.website} className="input" /></L><L l="Address"><textarea name="address" defaultValue={profile.address} className="input" /></L>
             <div><button className="btn btn-primary">Save</button></div></form>
         </Section>
         <Section title="Invoices">
@@ -21,6 +24,18 @@ export default function Settings() {
             <L l="Number prefix" h={`Numbers look like ${inv.prefix ?? "NTR"}-${new Date().getFullYear()}-001 and count up each year.`}><input name="prefix" defaultValue={inv.prefix} className="input" /></L><L l="Default payment terms"><input name="defaultTerms" defaultValue={inv.defaultTerms} className="input" placeholder="Net 30" /></L>
             <L l="Bank and payment information" h="Printed on every invoice. Nothing is filled in for you."><textarea name="paymentInfo" defaultValue={inv.paymentInfo} className="input" rows={4} placeholder="Account name, IBAN / routing, SWIFT, PayPal email…" /></L><L l="Default invoice note"><textarea name="notes" defaultValue={inv.notes} className="input" /></L>
             <div><button className="btn btn-primary">Save</button></div></form>
+        </Section>
+        <Section title="Sending email" id="email">
+          <p className="mb-3 text-[12.5px] text-mute">{smtp.configured ? <>Connected as <b>{smtp.user}</b> via {smtp.host}. “Send invoice now” emails the PDF from the invoice page.</> : "Not connected. Without this the app still writes the email for you and opens it in Gmail or your mail app."}</p>
+          {!smtp.configured && <div className="rounded-[5px] border border-line/15 bg-line/5 p-3 text-[12.5px] text-mute">
+            <p className="mb-2"><b>One-time setup (2 minutes, Gmail):</b></p>
+            <ol className="list-decimal space-y-1 pl-5"><li>In your Google account, turn on 2-Step Verification, then create an <b>App password</b> (Security → App passwords).</li><li>In the <code>nolan-os</code> folder create a file named <code>.env.local</code> with these lines (it is git-ignored and never stored in the database):</li></ol>
+            <pre className="mt-2 overflow-x-auto rounded bg-raised p-2 text-[12px]">{`NOLAN_SMTP_HOST=smtp.gmail.com
+NOLAN_SMTP_PORT=465
+NOLAN_SMTP_USER=you@gmail.com
+NOLAN_SMTP_PASS=your-16-letter-app-password
+NOLAN_SMTP_FROM="${brand.owner} <you@gmail.com>"`}</pre>
+            <p className="mt-2">3. Restart the app. This section will say “Connected”.</p></div>}
         </Section>
         <Section title="Behaviour">
           <form action={saveSettings} className="grid gap-3"><input type="hidden" name="kind" value="behaviour" />

@@ -33,6 +33,15 @@ python3 data-private/build_seed.py && npm run setup
 
 After setup you can also import CSV, Excel or JSON from **Import and export**, and take a full JSON or SQLite backup there.
 
+## Invoices: one screen, then email
+
+**Invoices → New invoice** is one screen: pick someone you already know (or add a new client, who is saved to Contacts), choose what you are charging for and the price, choose when it is due, and press *Create & write the email*. A live preview shows exactly what the PDF will look like. Company legal name, production name and payment details come from **Settings**.
+
+On the invoice page the app writes the email for you (reply + invoice, invoice only, payment reminder, thank you). Edit it, then:
+
+- **Send invoice now** emails the PDF over your own SMTP account. One-time setup: copy `.env.example` to `.env.local` and fill in your Gmail address and an *app password*. Credentials stay in that git-ignored file, never in the database. Nothing is marked *sent* unless the email actually went out.
+- Without that setup, **Open in Gmail / mail app** opens the same message and **Download PDF to attach** gives you the file.
+
 ## Design rules the code enforces
 
 - Nothing extracted by the email engine becomes a confirmed deal, amount or payment without you confirming it. Findings are labelled `FACT`, `INFERENCE` or unknown.

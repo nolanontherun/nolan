@@ -3,6 +3,7 @@ import { all, get, getSetting } from "./db";
 import { dateLabel, money } from "./format";
 import { invoiceStatusLabel } from "./calc";
 import { today } from "./format";
+import { addressLines, brandFrom, currencyName, dueDisplay, isReceipt, longDate, splitItem } from "./invoice-mail";
 
 export function nextInvoiceNumber(year = new Date().getFullYear()): string {
   const inv = getSetting<any>("invoice", { prefix: "NTR" });
@@ -25,53 +26,86 @@ export function loadInvoice(id: string) {
   return { inv, items, payments, contact, paid, total, balance: total === null ? null : Math.max(0, total - paid), label, profile: getSetting<any>("profile", {}), settings: getSetting<any>("invoice", {}) };
 }
 
-/** Professional single-page invoice. Layout mirrors the on-screen preview. */
+/** Warm, single-page invoice. The on-screen preview on the invoice page mirrors this layout. */
 export function invoicePdf(id: string): Promise<Buffer> {
   const f = loadInvoice(id);
   if (!f) throw new Error("Invoice not found");
-  const { inv, items, payments, contact, paid, total, balance, profile, settings } = f;
+  const { inv, items, contact, paid, total, balance, profile, settings } = f;
+  const brand = brandFrom(profile);
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: "LETTER", margin: 56, info: { Title: `Invoice ${inv.number ?? ""}`, Author: profile.business || profile.name } });
+    const doc = new PDFDocument({ size: "LETTER", margin: 0, bufferPages: true, info: { Title: `Invoice ${inv.number ?? ""}`, Author: brand.legal } });
     const chunks: Buffer[] = [];
     doc.on("data", (c) => chunks.push(c)); doc.on("end", () => resolve(Buffer.concat(chunks))); doc.on("error", reject);
-    const INK = "#16140F", MUTE = "#6B665B", LINE = "#D9D4C8", W = doc.page.width - 112;
-    doc.fillColor(INK).font("Times-Roman").fontSize(26).text(profile.business || "Nolan On The Run", 56, 56);
-    doc.font("Helvetica").fontSize(9).fillColor(MUTE).text([profile.name, profile.email, profile.website, profile.address].filter(Boolean).join("  ·  "), 56, 90, { width: W * 0.6 });
-    doc.font("Helvetica-Bold").fontSize(9).fillColor(MUTE).text("INVOICE", 56, 56, { width: W, align: "right", characterSpacing: 2 });
-    doc.font("Times-Roman").fontSize(22).fillColor(INK).text(inv.number ?? "Number not recorded", 56, 70, { width: W, align: "right" });
-    doc.moveTo(56, 120).lineTo(56 + W, 120).strokeColor(INK).lineWidth(1).stroke();
-    const col = (label: string, value: string, x: number, y: number, w = 150) => { doc.font("Helvetica-Bold").fontSize(7.5).fillColor(MUTE).text(label.toUpperCase(), x, y, { width: w, characterSpacing: 1 }); doc.font("Helvetica").fontSize(10).fillColor(INK).text(value, x, y + 12, { width: w }); };
-    const billName = inv.bill_to_name || inv.company_name || "Client";
-    col("Bill to", [billName, contact?.full_name, inv.bill_to_address, inv.bill_to_email || contact?.email].filter(Boolean).join("\n"), 56, 138, 230);
-    col("Issue date", dateLabel(inv.issue_date, { year: true }), 330, 138, 90);
-    col("Due date", inv.due_date ? dateLabel(inv.due_date, { year: true }) : "On receipt", 430, 138, 90);
-    col("Terms", inv.terms || "—", 330, 184, 90);
-    col("Currency", inv.currency, 430, 184, 90);
-    let y = 250;
-    if (inv.description || inv.deal_name) { col("Project", inv.description || inv.deal_name, 56, y, W); y += 44; }
-    doc.moveTo(56, y).lineTo(56 + W, y).strokeColor(LINE).lineWidth(0.75).stroke();
-    doc.font("Helvetica-Bold").fontSize(7.5).fillColor(MUTE);
-    doc.text("DESCRIPTION", 56, y + 8, { characterSpacing: 1 }); doc.text("QTY", 340, y + 8, { width: 40, align: "right", characterSpacing: 1 }); doc.text("RATE", 390, y + 8, { width: 60, align: "right", characterSpacing: 1 }); doc.text("AMOUNT", 460, y + 8, { width: W - 404, align: "right", characterSpacing: 1 });
-    y += 26; doc.moveTo(56, y).lineTo(56 + W, y).stroke();
-    doc.font("Helvetica").fontSize(10).fillColor(INK);
-    for (const it of items) {
-      const h = doc.heightOfString(it.description, { width: 270 });
-      doc.text(it.description, 56, y + 8, { width: 270 });
-      doc.text(String(it.quantity), 340, y + 8, { width: 40, align: "right" }); doc.text(money(it.unit_amount, inv.currency, { cents: true }), 390, y + 8, { width: 60, align: "right" }); doc.text(money(Math.round(it.quantity * it.unit_amount), inv.currency, { cents: true }), 460, y + 8, { width: W - 404, align: "right" });
-      y += Math.max(h, 14) + 16; doc.moveTo(56, y).lineTo(56 + W, y).strokeColor(LINE).stroke();
+    const INK = "#2B2722", SOFT = "#6F685D", GOLD = "#B58E55", HAIR = "#E6DCC9", CREAM = "#FBF8F2", BLUSH = "#F3EADB";
+    const PW = doc.page.width, PH = doc.page.height, M = 64, W = PW - M * 2, CX = PW / 2;
+    const paint = () => { doc.rect(0, 0, PW, PH).fill(CREAM); doc.rect(18, 18, PW - 36, PH - 36).lineWidth(0.7).strokeColor(HAIR).stroke(); };
+    const cap = (t: string, x: number, y: number, w: number, align: "left" | "center" | "right" = "left") => doc.font("Helvetica").fontSize(7.5).fillColor(GOLD).text(t.toUpperCase(), x, y, { width: w, align, characterSpacing: 2 });
+    const txt = (t: string, x: number, y: number, w: number, o: { size?: number; font?: string; color?: string; align?: "left" | "center" | "right"; gap?: number } = {}) =>
+      doc.font(o.font ?? "Helvetica").fontSize(o.size ?? 10).fillColor(o.color ?? INK).text(t, x, y, { width: w, align: o.align ?? "left", lineGap: o.gap ?? 3 });
+    const rule = (y: number, x1 = M, x2 = M + W) => doc.moveTo(x1, y).lineTo(x2, y).lineWidth(0.6).strokeColor(HAIR).stroke();
+    const mark = (y: number) => doc.moveTo(CX - 28, y).lineTo(CX + 28, y).lineWidth(0.8).strokeColor(GOLD).stroke();
+    const cur = inv.currency || "USD";
+    const due = dueDisplay(inv.terms, inv.due_date);
+    paint();
+
+    cap(brand.production || "Invoice", 0, 62, PW, "center");
+    txt(brand.legal, 0, 80, PW, { size: brand.legal.length > 24 ? 28 : 32, font: "Times-Roman", align: "center" });
+    mark(128);
+    txt("Invoice", 0, 140, PW, { size: 15, font: "Times-Italic", color: SOFT, align: "center" });
+
+    let y = 178; const colW = W / 3;
+    const meta = (l: string, v: string, n: number) => { cap(l, M + colW * n, y, colW, "center"); txt(v, M + colW * n, y + 14, colW, { size: 11, font: "Times-Roman", align: "center" }); };
+    meta("Invoice no.", inv.number ?? "—", 0); meta("Issued", longDate(inv.issue_date) || "—", 1); meta("Due", due, 2);
+    rule(y + 42);
+
+    y = 242;
+    const billName = inv.bill_to_name || contact?.full_name || inv.company_name || "Client";
+    const billLines = [inv.bill_to_email || contact?.email, contact?.phone, inv.bill_to_address].filter(Boolean).join("\n");
+    cap("Prepared for", M, y, 220);
+    txt(billName, M, y + 15, 230, { size: 15, font: "Times-Roman" });
+    if (billLines) txt(billLines, M, y + 38, 230, { size: 9.5, color: SOFT });
+    cap("From", M + 290, y, 200);
+    txt(brand.legal, M + 290, y + 15, 230, { size: 15, font: "Times-Roman" });
+    txt([...addressLines(brand.address), brand.email].join("\n"), M + 290, y + 38, 230, { size: 9.5, color: SOFT });
+
+    y = 344;
+    if (inv.description) { cap("Project", M, y - 4, W); txt(inv.description, M, y + 10, W, { size: 13, font: "Times-Roman" }); y += 46; }
+    doc.rect(M, y, W, 26).fill(BLUSH);
+    cap("Description", M + 16, y + 9, 250); cap("Amount", M + W - 116, y + 9, 100, "right");
+    y += 26;
+    const rows = items.length ? items.map((it: any) => ({ ...splitItem(it.description), qty: it.quantity, rate: it.unit_amount, amount: Math.round(it.quantity * it.unit_amount) })) : [{ title: inv.description ?? "Services", detail: "", qty: 1, rate: total ?? 0, amount: total ?? 0 }];
+    for (const r of rows) {
+      const detail = [r.detail, r.qty !== 1 ? `${r.qty} × ${money(r.rate, cur, { cents: true })}` : ""].filter(Boolean).join("  ·  ");
+      const h = detail ? 70 : 50;
+      if (y + h > PH - 190) { doc.addPage(); paint(); y = 64; }
+      txt(r.title, M + 16, y + 18, 340, { size: 14, font: "Times-Roman" });
+      if (detail) txt(detail, M + 16, y + 40, 340, { size: 9.5, color: SOFT });
+      txt(money(r.amount, cur, { cents: true }), M + W - 160, y + 20, 144, { size: 13, align: "right" });
+      y += h; rule(y);
     }
-    y += 14;
-    const row = (label: string, value: string, bold = false) => { doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(bold ? 12 : 10).fillColor(INK).text(label, 330, y, { width: 100 }); doc.text(value, 430, y, { width: W - 374, align: "right" }); y += bold ? 24 : 18; };
-    row("Subtotal", money(total, inv.currency, { cents: true }));
-    if (paid > 0) row("Paid", `-${money(paid, inv.currency, { cents: true })}`);
-    doc.moveTo(330, y - 2).lineTo(56 + W, y - 2).strokeColor(INK).lineWidth(1).stroke(); y += 6;
-    row(paid > 0 ? "Balance due" : "Total due", money(balance, inv.currency, { cents: true }), true);
-    y += 14;
-    if (settings.paymentInfo) { col("Payment information", settings.paymentInfo, 56, y, W * 0.65); y += 20 + doc.heightOfString(settings.paymentInfo, { width: W * 0.65 }) + 10; }
-    else { col("Payment information", "Add your bank or payment details in Settings to show them here.", 56, y, W * 0.65); y += 44; }
-    if (inv.notes) col("Notes", inv.notes, 56, y, W * 0.8);
-    doc.font("Helvetica").fontSize(8).fillColor(MUTE).text(`${profile.business || ""} · ${inv.number ?? ""}`, 56, doc.page.height - 72, { width: W, align: "center" });
-    void payments;
+
+    y += 24;
+    if (paid > 0) { cap("Paid", M, y, 200); txt(`−${money(paid, cur, { cents: true })}`, M + W - 260, y - 3, 260, { size: 13, align: "right", color: SOFT }); y += 28; }
+    cap(paid > 0 ? "Balance due" : "Total due", M, y + 6, 200);
+    txt(money(balance, cur, { cents: true }), M + W - 260, y - 4, 260, { size: 30, font: "Times-Roman", align: "right" });
+    txt(`${currencyName(cur)}  ·  ${isReceipt(inv.terms) ? "due on receipt" : `due ${due}`}`, M + W - 260, y + 34, 260, { size: 9, color: SOFT, align: "right" });
+    y += 60; mark(y);
+    y += 36;
+    txt(inv.notes || "Thank you for trusting me.", M + 20, y, W - 40, { size: 18, font: "Times-Italic", align: "center" });
+
+    y = Math.max(646, y + 70);
+    if (y > PH - 120) { doc.addPage(); paint(); y = 64; }
+    rule(y);
+    cap("Payment", M, y + 16, 200);
+    txt(settings.paymentInfo || "I'll send the payment details by email.", M, y + 31, 250, { size: 9.5, color: SOFT });
+    cap("Questions", M + 290, y + 16, 200);
+    txt(`${brand.email}\nI'm happy to help with anything.`, M + 290, y + 31, 220, { size: 9.5, color: SOFT });
+
+    const range = doc.bufferedPageRange();
+    for (let n = 0; n < range.count; n++) {
+      doc.switchToPage(n);
+      doc.font("Helvetica").fontSize(7.5).fillColor(SOFT).text([brand.legal, brand.production, brand.address.split(/,\s*/).slice(-2).join(", ")].filter(Boolean).join("  ·  ") + (range.count > 1 ? `  ·  ${n + 1}/${range.count}` : ""), 0, PH - 50, { width: PW, align: "center", lineBreak: false });
+    }
     doc.end();
   });
 }

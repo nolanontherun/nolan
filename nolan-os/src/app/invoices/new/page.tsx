@@ -1,13 +1,29 @@
 import { all, get, getSetting } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { InvoiceForm } from "@/components/InvoiceForm";
+import { QuickInvoice } from "@/components/QuickInvoice";
 import { nextInvoiceNumber } from "@/lib/invoice";
+import { brandFrom } from "@/lib/invoice-mail";
 import { loadDeals } from "@/lib/queries";
 import { today } from "@/lib/format";
+import Link from "next/link";
 
 export const metadata = { title: "New invoice" };
-export default async function NewInvoice({ searchParams }: { searchParams: Promise<{ deal?: string }> }) {
-  const { deal } = await searchParams;
+export default async function NewInvoice({ searchParams }: { searchParams: Promise<{ deal?: string; client?: string; advanced?: string }> }) {
+  const { deal, client, advanced } = await searchParams;
+  if (!deal && !advanced) {
+    // People you can invoice: contacts with an email or phone, most recently in touch first.
+    const clients = all<any>(`SELECT c.id, c.full_name name, c.email, c.phone, co.name company FROM contacts c LEFT JOIN companies co ON co.id = c.company_id
+      WHERE c.archived = 0 AND c.ignored = 0 AND (c.email IS NOT NULL OR c.phone IS NOT NULL) ORDER BY COALESCE(c.last_contact, c.created_at) DESC LIMIT 400`);
+    return (
+      <div>
+        <PageHeader title="New invoice" kicker="Invoices" sub="Pick the client, say what it is for and the price, and send. Clients you add here are saved to Contacts.">
+          <Link href="/invoices/new?advanced=1" className="btn btn-sm">From a deal / advanced</Link>
+        </PageHeader>
+        <QuickInvoice clients={clients} brand={brandFrom(getSetting<any>("profile", {}))} preselect={client} defaults={{ number: nextInvoiceNumber(), issue: today(), currency: "USD", notes: "Thank you for trusting me." }} />
+      </div>
+    );
+  }
   const deals = loadDeals();
   const d = deal ? deals.find((x) => x.id === deal) : undefined;
   const dels = d ? all<any>("SELECT * FROM deliverables WHERE deal_id = ?", d.id) : [];
@@ -24,7 +40,9 @@ export default async function NewInvoice({ searchParams }: { searchParams: Promi
   }
   return (
     <div>
-      <PageHeader title="New invoice" kicker="Invoices" sub={d ? `Built from ${d.name}. Check every line before you send it.` : "Start from a deal to bring the client and amounts in, or fill it in by hand."} />
+      <PageHeader title="New invoice" kicker="Invoices" sub={d ? `Built from ${d.name}. Check every line before you send it.` : "Start from a deal to bring the client and amounts in, or fill it in by hand."}>
+        <Link href="/invoices/new" className="btn btn-sm">Quick invoice</Link>
+      </PageHeader>
       <InvoiceForm deals={deals.map((x) => ({ id: x.id, name: x.name }))} initial={{ deal_id: d?.id ?? "", currency: d?.currency ?? "USD", number: nextInvoiceNumber(), terms: d?.payment_terms?.match(/net\s?\d+/i)?.[0] ?? inv.defaultTerms, issue: today(), due: "", description: d ? (d.name) : "", bill_to_name: d?.agency_name ?? d?.company_name ?? "", bill_to_email: contact?.email ?? "", bill_to_address: "", notes: inv.notes ?? "", items, contact_id: contact?.id ?? "" }} />
     </div>
   );

@@ -6,6 +6,9 @@ import { Badge, Section } from "@/components/ui";
 import { addPayment, invoiceAction } from "@/lib/actions";
 import { ConfirmForm, PrintButton } from "@/components/Forms";
 import { PAYMENT_METHODS } from "@/lib/constants";
+import { InvoiceSend } from "@/components/InvoiceSend";
+import { smtpStatus } from "@/lib/mailer";
+import { addressLines, brandFrom, currencyName, dueDisplay, isReceipt, longDate, splitItem } from "@/lib/invoice-mail";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) { const { id } = await params; return { title: loadInvoice(id)?.inv.number ?? "Invoice" }; }
 
@@ -14,6 +17,8 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   const f = loadInvoice(id);
   if (!f) notFound();
   const { inv, items, payments, contact, paid, total, balance, label, profile, settings } = f;
+  const brand = brandFrom(profile); const due = dueDisplay(inv.terms, inv.due_date); const smtp = smtpStatus();
+  const service = items.length ? splitItem(items[0].description).title : inv.description ?? "";
   const A = ({ act, children, ghost }: { act: string; children: React.ReactNode; ghost?: boolean }) => <form action={invoiceAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="act" value={act} /><button className={`btn btn-sm ${ghost ? "btn-ghost" : ""}`}>{children}</button></form>;
   return (
     <div>
@@ -25,34 +30,34 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
         </div>
       </div>
       <div className="grid gap-x-10 gap-y-8 xl:grid-cols-[1fr_320px]">
-        {/* paper preview */}
-        <div className="print-page mx-auto w-full max-w-[760px] rounded-[3px] border border-line/10 bg-white p-8 text-[#16140F] shadow-[0_1px_0_rgba(0,0,0,0.04),0_20px_50px_-30px_rgba(0,0,0,0.35)] sm:p-12" style={{ colorScheme: "light" }}>
-          <div className="flex items-start justify-between gap-6 border-b border-[#16140F] pb-6">
-            <div><div className="font-serif text-[30px] leading-none">{profile.business || "Nolan On The Run"}</div><div className="mt-2 text-[11.5px] leading-relaxed text-[#6B665B]">{[profile.name, profile.email, profile.website, profile.address].filter(Boolean).join("  ·  ")}</div></div>
-            <div className="text-right"><div className="text-[10px] font-semibold tracking-[0.2em] text-[#6B665B]">INVOICE</div><div className="font-serif text-[26px] leading-tight">{inv.number ?? "—"}</div></div>
+        {/* paper preview: same look as the PDF */}
+        <div className="print-page mx-auto w-full max-w-[760px] rounded-[3px] border border-[#E6DCC9] bg-[#FBF8F2] p-8 text-[#2B2722] shadow-[0_1px_0_rgba(0,0,0,0.04),0_20px_50px_-30px_rgba(0,0,0,0.35)] sm:p-14" style={{ colorScheme: "light" }}>
+          <div className="text-center"><div className="text-[10px] uppercase tracking-[0.28em] text-[#B58E55]">{brand.production || "Invoice"}</div><div className="mt-1.5 font-serif text-[36px] leading-tight sm:text-[40px]">{brand.legal}</div><div className="mx-auto my-3 h-px w-9 bg-[#B58E55]" /><div className="font-serif text-[18px] italic text-[#6F685D]">Invoice</div></div>
+          <div className="mt-8 grid grid-cols-3 border-b border-[#E6DCC9] pb-5 text-center">{[["Invoice no.", inv.number ?? "—"], ["Issued", longDate(inv.issue_date) || "—"], ["Due", due]].map(([l, v]) => <div key={l}><div className="text-[9px] uppercase tracking-[0.22em] text-[#B58E55]">{l}</div><div className="mt-1 font-serif text-[15px]">{v}</div></div>)}</div>
+          <div className="mt-7 grid grid-cols-1 gap-6 text-[12.5px] sm:grid-cols-2">
+            <div><div className="text-[9px] uppercase tracking-[0.22em] text-[#B58E55]">Prepared for</div><div className="mt-1.5 font-serif text-[20px] leading-tight">{inv.bill_to_name || contact?.full_name || inv.company_name || "Client"}</div><div className="mt-1 whitespace-pre-line leading-relaxed text-[#6F685D]">{[inv.bill_to_email || contact?.email, contact?.phone, inv.bill_to_address].filter(Boolean).join("\n")}</div></div>
+            <div className="sm:pl-10"><div className="text-[9px] uppercase tracking-[0.22em] text-[#B58E55]">From</div><div className="mt-1.5 font-serif text-[20px] leading-tight">{brand.legal}</div><div className="mt-1 whitespace-pre-line leading-relaxed text-[#6F685D]">{[...addressLines(brand.address), brand.email].join("\n")}</div></div>
           </div>
-          <div className="mt-6 grid grid-cols-2 gap-6 text-[12.5px] sm:grid-cols-4">
-            <div className="col-span-2"><div className="text-[9.5px] font-semibold tracking-[0.14em] text-[#6B665B]">BILL TO</div><div className="mt-1 whitespace-pre-line leading-snug">{[inv.bill_to_name || inv.company_name, contact?.full_name, inv.bill_to_address, inv.bill_to_email || contact?.email].filter(Boolean).join("\n")}</div></div>
-            <div><div className="text-[9.5px] font-semibold tracking-[0.14em] text-[#6B665B]">ISSUED</div><div className="mt-1">{inv.issue_date ? dateLabel(inv.issue_date, { year: true }) : "—"}</div><div className="mt-3 text-[9.5px] font-semibold tracking-[0.14em] text-[#6B665B]">TERMS</div><div className="mt-1">{inv.terms ?? "—"}</div></div>
-            <div><div className="text-[9.5px] font-semibold tracking-[0.14em] text-[#6B665B]">DUE</div><div className="mt-1">{inv.due_date ? dateLabel(inv.due_date, { year: true }) : "On receipt"}</div><div className="mt-3 text-[9.5px] font-semibold tracking-[0.14em] text-[#6B665B]">CURRENCY</div><div className="mt-1">{inv.currency}</div></div>
+          {inv.description && <div className="mt-7"><div className="text-[9px] uppercase tracking-[0.22em] text-[#B58E55]">Project</div><div className="mt-1 font-serif text-[18px]">{inv.description}</div></div>}
+          <div className="mt-8 flex justify-between bg-[#F3EADB] px-4 py-2 text-[9px] uppercase tracking-[0.22em] text-[#B58E55]"><span>Description</span><span>Amount</span></div>
+          {items.map((it: any) => { const sp = splitItem(it.description); const detail = [sp.detail, it.quantity !== 1 ? `${it.quantity} × ${money(it.unit_amount, inv.currency, { cents: true })}` : ""].filter(Boolean).join("  ·  "); return <div key={it.id} className="flex justify-between gap-4 border-b border-[#E6DCC9] px-4 py-5"><div><div className="font-serif text-[19px] leading-snug">{sp.title}</div>{detail && <div className="mt-1 text-[12px] text-[#6F685D]">{detail}</div>}</div><div className="whitespace-nowrap text-[15px] tabular-nums">{money(Math.round(it.quantity * it.unit_amount), inv.currency, { cents: true })}</div></div>; })}
+          {!items.length && <div className="border-b border-[#E6DCC9] px-4 py-5 text-[#6F685D]">{inv.description ?? "No line items recorded for this invoice."}</div>}
+          <div className="mt-6 flex items-end justify-between gap-4">
+            <div className="text-[9px] uppercase tracking-[0.22em] text-[#B58E55]">{paid > 0 ? "Balance due" : "Total due"}</div>
+            <div className="text-right">{paid > 0 && <div className="mb-1 text-[12px] text-[#6F685D]">Paid −{money(paid, inv.currency, { cents: true })}</div>}<div className="font-serif text-[40px] leading-none tabular-nums">{money(balance, inv.currency, { cents: true })}</div><div className="mt-1.5 text-[11px] text-[#6F685D]">{currencyName(inv.currency)} · {isReceipt(inv.terms) ? "due on receipt" : `due ${due}`}</div></div>
           </div>
-          {(inv.description || inv.deal_name) && <div className="mt-6 text-[12.5px]"><div className="text-[9.5px] font-semibold tracking-[0.14em] text-[#6B665B]">PROJECT</div><div className="mt-1">{inv.description || inv.deal_name}</div></div>}
-          <table className="mt-7 w-full border-collapse text-[12.5px]"><thead><tr className="border-b border-[#D9D4C8] text-left text-[9.5px] font-semibold tracking-[0.14em] text-[#6B665B]"><th className="py-2">DESCRIPTION</th><th className="w-14 py-2 text-right">QTY</th><th className="w-28 py-2 text-right">RATE</th><th className="w-28 py-2 text-right">AMOUNT</th></tr></thead><tbody>
-            {items.map((it: any) => <tr key={it.id} className="border-b border-[#ECE8DE]"><td className="py-3 pr-4 leading-snug">{it.description}</td><td className="py-3 text-right tabular-nums">{it.quantity}</td><td className="py-3 text-right tabular-nums">{money(it.unit_amount, inv.currency, { cents: true })}</td><td className="py-3 text-right tabular-nums">{money(Math.round(it.quantity * it.unit_amount), inv.currency, { cents: true })}</td></tr>)}
-            {!items.length && <tr><td colSpan={4} className="py-4 text-[#6B665B]">{inv.description ?? "No line items recorded for this invoice."}</td></tr>}
-          </tbody></table>
-          <div className="ml-auto mt-5 w-full max-w-[280px] text-[12.5px]">
-            <div className="flex justify-between py-1"><span>Subtotal</span><span className="tabular-nums">{money(total, inv.currency, { cents: true })}</span></div>
-            {paid > 0 && <div className="flex justify-between py-1"><span>Paid</span><span className="tabular-nums">−{money(paid, inv.currency, { cents: true })}</span></div>}
-            <div className="mt-1 flex justify-between border-t border-[#16140F] pt-2 text-[15px] font-semibold"><span>{paid > 0 ? "Balance due" : "Total due"}</span><span className="tabular-nums">{money(balance, inv.currency, { cents: true })}</span></div>
-          </div>
-          <div className="mt-9 grid gap-6 text-[12px] sm:grid-cols-2">
-            <div><div className="text-[9.5px] font-semibold tracking-[0.14em] text-[#6B665B]">PAYMENT INFORMATION</div><div className="mt-1 whitespace-pre-line leading-snug">{settings.paymentInfo || <span className="text-[#6B665B]">Add your bank or payment details in Settings to show them here.</span>}</div></div>
-            {inv.notes && <div><div className="text-[9.5px] font-semibold tracking-[0.14em] text-[#6B665B]">NOTES</div><div className="mt-1 whitespace-pre-line leading-snug">{inv.notes}</div></div>}
+          <div className="mx-auto my-8 h-px w-9 bg-[#B58E55]" />
+          <div className="text-center font-serif text-[24px] italic">{inv.notes || "Thank you for trusting me."}</div>
+          <div className="mt-10 grid gap-6 border-t border-[#E6DCC9] pt-5 text-[12px] sm:grid-cols-2">
+            <div><div className="text-[9px] uppercase tracking-[0.22em] text-[#B58E55]">Payment</div><div className="mt-1.5 whitespace-pre-line leading-relaxed text-[#6F685D]">{settings.paymentInfo || <>I'll send the payment details by email. <a href="/settings" className="link no-print">Add them in Settings</a></>}</div></div>
+            <div><div className="text-[9px] uppercase tracking-[0.22em] text-[#B58E55]">Questions</div><div className="mt-1.5 leading-relaxed text-[#6F685D]">{brand.email}<br />I'm happy to help with anything.</div></div>
           </div>
         </div>
         {/* actions */}
         <aside className="no-print space-y-7">
+          <Section title="Email this invoice" id="send-section">
+            <InvoiceSend id={id} number={inv.number ?? ""} to={inv.bill_to_email || contact?.email || ""} clientName={inv.bill_to_name || contact?.full_name || null} service={service} amount={money(total, inv.currency, { cents: true })} dueText={due} brand={brand} alreadySent={!!inv.sent_at} smtp={{ configured: smtp.configured, user: smtp.user }} />
+          </Section>
           <Section title="Status">
             <div className="flex flex-wrap gap-1.5">
               <A act="sent">Mark as sent</A><A act="viewed">Mark as viewed</A><A act="disputed">Mark disputed</A>

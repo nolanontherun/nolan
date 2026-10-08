@@ -6,10 +6,12 @@ import { gross } from "./calc";
 import { exclusivityConflicts } from "./attention";
 import { classifyEmail, detectPaymentPromise, extractDeal, suspiciousSignals } from "./intel";
 import { addDays, parseMoney, today } from "./format";
+import { DueMode, brandFrom, joinItem, parseRecipients, resolveDue } from "./invoice-mail";
+import { sendMail, smtpStatus } from "./mailer";
 import { STAGES } from "./constants";
-import { nextInvoiceNumber } from "./invoice";
+import { invoicePdf, loadInvoice, nextInvoiceNumber } from "./invoice";
 
-export type ActionState = { ok?: boolean; error?: string; warnings?: string[]; id?: string } | null;
+export type ActionState = { ok?: boolean; error?: string; message?: string; warnings?: string[]; id?: string } | null;
 
 const S = (fd: FormData, k: string) => { const v = fd.get(k); const s = typeof v === "string" ? v.trim() : ""; return s || null; };
 const M = (fd: FormData, k: string) => parseMoney(S(fd, k));
@@ -338,6 +340,74 @@ export async function createInvoice(_: ActionState, fd: FormData): Promise<Actio
   redirect(`/invoices/${id}`);
 }
 
+/** One-screen invoice: pick a client you already know (or add one), fill the service and price, done. */
+export async function createQuickInvoice(_: ActionState, fd: FormData): Promise<ActionState> {
+  let contact: any = null;
+  if (S(fd, "mode") === "new") {
+    const name = S(fd, "new_name");
+    if (!name) return { error: "Add the client's name, or pick someone you already know." };
+    const email = S(fd, "new_email");
+    if (email && !parseRecipients(email).valid.length) return { error: "That email address does not look right." };
+    const [first, ...rest] = name.split(" ");
+    const cid = uid("ct");
+    const companyId = await ensureCompany(S(fd, "new_company"));
+    run("INSERT INTO contacts (id, full_name, first_name, last_name, company_id, email, phone, contact_type, source) VALUES (?,?,?,?,?,?,?,?,?)", cid, name, first, rest.join(" ") || null, companyId, email, S(fd, "new_phone"), "Client", "manual");
+    log("contact", cid, "create", `Added ${name} while creating an invoice`);
+    contact = get("SELECT * FROM contacts WHERE id = ?", cid);
+  } else {
+    const cid = S(fd, "client_id");
+    contact = cid ? get("SELECT * FROM contacts WHERE id = ?", cid) : null;
+    if (!contact) return { error: "Pick a client from the list, or choose “Add a new client”." };
+  }
+  const titles = fd.getAll("item_title").map((x) => String(x).trim());
+  const details = fd.getAll("item_detail").map((x) => String(x).trim());
+  const qtys = fd.getAll("item_qty").map((x) => parseFloat(String(x)) || 1);
+  const amts = fd.getAll("item_amount").map((x) => parseMoney(String(x)));
+  const items = titles.map((t, i) => ({ d: joinItem(t, details[i] ?? ""), q: qtys[i], a: amts[i], t })).filter((x) => x.t && x.a !== null);
+  if (!items.length) return { error: "Add what you are charging for and the amount." };
+  const cur = S(fd, "currency") ?? "USD";
+  const issue = D(fd, "issue_date") ?? today();
+  const mode = (S(fd, "due_mode") ?? "receipt") as DueMode;
+  if (mode === "date" && !D(fd, "due_date")) return { error: "Pick the due date, or choose another option." };
+  const { due, terms } = resolveDue(mode, issue, { date: D(fd, "due_date"), days: N(fd, "net_days") });
+  const number = S(fd, "number") ?? (await nextInvoiceNumber(+issue.slice(0, 4)));
+  if (get("SELECT 1 FROM invoices WHERE number = ?", number)) return { error: `Invoice number ${number} already exists.` };
+  const total = items.reduce((s, x) => s + Math.round(x.q * x.a!), 0);
+  const id = uid("inv");
+  run(`INSERT INTO invoices (id, number, deal_id, company_id, billing_contact_id, issue_date, due_date, amount, currency, status, terms, description, notes, bill_to_name, bill_to_address, bill_to_email, source, number_source)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, number, null, contact.company_id ?? null, contact.id, issue, due, total, cur, "Draft", terms, S(fd, "project"), S(fd, "notes") ?? "Thank you for trusting me.", contact.full_name, S(fd, "bill_to_address"), contact.email, "manual", "Nolan OS numbering");
+  items.forEach((x, i) => run("INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_amount, position) VALUES (?,?,?,?,?,?)", uid("ii"), id, x.d, x.q, x.a, i));
+  log("invoice", id, "create", `Invoice ${number} created for ${contact.full_name}`);
+  refresh();
+  redirect(`/invoices/${id}${S(fd, "intent") === "email" ? "#send" : ""}`);
+}
+
+/** Emails the invoice PDF over your own SMTP account (see lib/mailer.ts). Marks the invoice as sent only after it went out. */
+export async function sendInvoiceEmail(_: ActionState, fd: FormData): Promise<ActionState> {
+  const id = S(fd, "id"); const f = id ? loadInvoice(id) : null;
+  if (!f || !id) return { error: "Invoice not found." };
+  if (["Void", "Written off"].includes(f.inv.status)) return { error: `This invoice is ${f.inv.status.toLowerCase()}; it cannot be sent.` };
+  const { valid, invalid } = parseRecipients(S(fd, "to") ?? "");
+  if (!valid.length) return { error: "Add the client's email address." };
+  if (invalid.length) return { error: `These do not look like email addresses: ${invalid.join(", ")}` };
+  const subject = S(fd, "subject"); const text = S(fd, "body");
+  if (!subject || !text) return { error: "The subject and message cannot be empty." };
+  const st = smtpStatus();
+  if (!st.configured) return { error: "Direct sending is not set up yet. Use “Open in Gmail” below, or see Settings → Sending email." };
+  const brand = brandFrom(f.profile);
+  try {
+    const pdf = await invoicePdf(id);
+    const file = `${(f.inv.number ?? "invoice").replace(/[^A-Za-z0-9._-]/g, "_")}.pdf`;
+    await sendMail({ to: valid, subject, text, replyTo: brand.email, bcc: fd.get("copy_me") === "on" ? st.user : undefined, attachments: [{ filename: file, content: pdf, contentType: "application/pdf" }] });
+  } catch (e: any) {
+    return { error: `The email was not sent: ${e?.message ?? "unknown error"}. Nothing was marked as sent.` };
+  }
+  run("UPDATE invoices SET status = CASE WHEN status IN ('Draft') THEN 'Sent' ELSE status END, sent_at = COALESCE(sent_at, ?) WHERE id = ?", today(), id);
+  log("invoice", id, "email", `Invoice ${f.inv.number} emailed to ${valid.join(", ")}`);
+  refresh();
+  return { ok: true, message: `Sent to ${valid.join(", ")} with the PDF attached, and marked as sent.` };
+}
+
 function syncInvoiceStatus(invoiceId: string) {
   const inv = get<any>("SELECT * FROM invoices WHERE id = ?", invoiceId);
   if (!inv || ["Void", "Written off"].includes(inv.status)) return;
@@ -490,7 +560,7 @@ export async function addDocument(fd: FormData) {
 // ---------------------------------------------------------------- settings
 export async function saveSettings(fd: FormData) {
   const kind = S(fd, "kind");
-  if (kind === "profile") setSetting("profile", { name: S(fd, "name") ?? "", business: S(fd, "business") ?? "", email: S(fd, "email") ?? "", address: S(fd, "address") ?? "", website: S(fd, "website") ?? "" });
+  if (kind === "profile") setSetting("profile", { name: S(fd, "name") ?? "", business: S(fd, "business") ?? "", legalName: S(fd, "legalName") ?? "", production: S(fd, "production") ?? "", email: S(fd, "email") ?? "", address: S(fd, "address") ?? "", website: S(fd, "website") ?? "" });
   if (kind === "invoice") { const cur = getSetting<any>("invoice", {}); setSetting("invoice", { ...cur, prefix: (S(fd, "prefix") ?? "NTR").toUpperCase(), defaultTerms: S(fd, "defaultTerms") ?? "Net 30", paymentInfo: S(fd, "paymentInfo") ?? "", notes: S(fd, "notes") ?? "" }); }
   if (kind === "behaviour") {
     const cur = getSetting<any>("behaviour", {});

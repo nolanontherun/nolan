@@ -25,7 +25,7 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
         <div className="caps mb-2">{[c.job_title, c.contact_type].filter(Boolean).join(" · ") || "Contact"}</div>
         <h1 className="serif text-[44px] leading-[1.02] sm:text-[56px]">{c.full_name}</h1>
         <p className="mt-3 text-[14px] text-mute">{c.company_id ? <Link href={`/companies/${c.company_id}`} className="link">{c.company_name}</Link> : null}{c.company_id && c.agency_id ? " · " : ""}{c.agency_id ? <Link href={`/agencies/${c.agency_id}`} className="link">{c.agency_name}</Link> : null}{!c.company_id && !c.agency_id ? "Company not recorded" : ""}</p>
-        <div className="mt-4 flex flex-wrap items-center gap-1.5 no-print">
+        <div className="mt-4 flex flex-wrap items-center gap-1.5 no-print"><Link href={`/invoices/new?client=${id}`} className="btn btn-sm mr-2">New invoice for {c.first_name ?? c.full_name.split(" ")[0]}</Link>
           {c.tags.map((tg) => <form key={tg} action={toggleTag}><input type="hidden" name="entity" value="contact" /><input type="hidden" name="id" value={id} /><input type="hidden" name="tag" value={tg} /><button className="chip chip-on">{tg} ×</button></form>)}
           <details className="relative"><summary className="chip cursor-pointer list-none">+ tag</summary><form action={toggleTag} className="absolute z-10 mt-1 w-56 rounded-[6px] border border-line/15 bg-raised p-2 shadow-lg"><input type="hidden" name="entity" value="contact" /><input type="hidden" name="id" value={id} /><input list="ct" name="tag" className="input" /><datalist id="ct">{DEFAULT_TAGS.map((x) => <option key={x} value={x} />)}</datalist><button className="btn btn-sm mt-2 w-full">Add</button></form></details>
         </div>
